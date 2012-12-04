@@ -1,0 +1,103 @@
+#!/usr/bin/python
+
+from optparse import OptionParser
+import os
+import sys
+
+appdir = '%s/.brightnessctrl' % os.getenv('HOME')
+pipefile = 'OSDpipe'
+actual_brightness_file = '/sys/class/backlight/psb_intel_backlight/actual_brightness'
+maximum_brightness_in_file = 398310
+
+pipefilepath = '%s/%s' % (appdir, pipefile)
+
+isOSD = False
+def showOSD(B):
+	if isOSD == False:
+		return
+	try:
+		os.makedirs(appdir)
+	except:
+		pass
+	try:
+		os.mkfifo(pipefilepath, 0600)
+	except:
+		pass
+	os.system('brightnessctrlOSD > /dev/null 2> /dev/null &')
+	f = open(pipefilepath, 'w')
+	f.write(str(B) + '\n')
+	f.close()
+
+usage = '''
+    %prog [-h/--help] [-o/--osd] brightness-option
+
+Notes:
+   1. Brightness is an integer between 0 and 255 (inclusive).
+   2. Do not use more than one brightness option at once.
+   3. Be careful not to set brightness to 0 - not that this is fatal.'''
+
+parser = OptionParser(usage=usage)
+
+parser.add_option('-o', '--osd', action='store_true', dest='osd', default=False, help='Display OSD Notification')
+parser.add_option('-g', '--get', action='store_const', const='1', dest='g', default=-1, help='Print current brightness')
+parser.add_option('-s', '--set', action='store', type='int', dest='s', default=-1, help='Set brightness to S')
+parser.add_option('-p', '--plus', action='store', type='int', dest='p', default=-1, help='Increase brightness by P')
+parser.add_option('-m', '--minus', action='store', type='int', dest='m', default=-1, help='Reduce brightness by M')
+
+(options, args) = parser.parse_args()
+isOSD = options.osd
+parity = sum([int(options.g!=-1), int(options.s!=-1), int(options.p!=-1), int(options.m!=-1)])
+if parity == 0:
+	parser.error('no brightness-option(-g/-s/-p/-m) provided')
+elif parity > 1:
+	parser.error('provide only one brightness-option(-g/-s/-p/-m)')
+elif options.g != -1:
+	f = open(actual_brightness_file, 'r')
+	curB = (int(f.readline())*255)/maximum_brightness_in_file
+	f.close()
+	print 'Current brightness is %d.' % curB
+elif options.s != -1:
+	s = int(options.s)
+	if 0 <= s <= 255:
+		os.system('sudo setpci -s \'00:02.0\' F4.B=' + hex(s)[2:])
+		print 'Brightness set to %d.' % s
+		showOSD(s)
+	else:
+		parser.error('brightness value should be an integer between 0 and 255 (inclusive)')
+elif options.p != -1:
+	p = int(options.p)
+	f = open(actual_brightness_file, 'r')
+	curB = (int(f.readline())*255)/maximum_brightness_in_file
+	f.close()
+	finB = curB + p
+	if 0 <= finB <= 255:
+		os.system('sudo setpci -s \'00:02.0\' F4.B=' + hex(finB)[2:])
+		print 'Brightness incremented by %d. Current brightness is %d.' % (p, finB)
+		showOSD(finB)
+	if 0 > finB:
+		os.system('sudo setpci -s \'00:02.0\' F4.B=0')
+		print 'Set to minimum brightness(0).'
+		showOSD(0)
+	if finB > 255:
+		os.system('sudo setpci -s \'00:02.0\' F4.B=ff')
+		print 'Set to maximum brightness(255).'
+		showOSD(255)
+elif options.m != -1:
+	m = int(options.m)
+	f = open(actual_brightness_file, 'r')
+	curB = (int(f.readline())*255)/maximum_brightness_in_file
+	f.close()
+	finB = curB - m
+	if 0 <= finB <= 255:
+		os.system('sudo setpci -s \'00:02.0\' F4.B=' + hex(finB)[2:])
+		print 'Brightness decremented by %d. Current brightness is %d.' % (m, finB)
+		showOSD(finB)
+	if 0 > finB:
+		os.system('sudo setpci -s \'00:02.0\' F4.B=0')
+		print 'Set to minimum brightness(0).'
+		showOSD(0)
+	if finB > 255:
+		os.system('sudo setpci -s \'00:02.0\' F4.B=ff')
+		print 'Set to maximum brightness(255).'
+		showOSD(255)
+

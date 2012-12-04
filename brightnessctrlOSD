@@ -1,0 +1,86 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+#Notes:
+#    1. Specifically designed for notify-osd - with its default settings (fonts, etc.)
+#    2. Lists containing UTF characters used in this code are at 'https://secure.wikimedia.org/wikipedia/en/wiki/List_of_Unicode_characters#Block_elements' and 'http://en.wikipedia.org/wiki/Miscellaneous_Symbols'
+
+#FIXME: Position and width are not controllable.
+#FIXME: Updating works fine. But, showing for the first time is sluggish. Buggy pynotify is responsible, I guess.
+#FIXME: If width becomes controllable, use "/usr/share/notify-osd/icons/gnome/scalable/status/notification-gpm-brightness-lcd.svg"
+
+import os
+import sys
+import time
+import pynotify
+import signal
+
+TIMEOUT = 15 #Should be ASmallAP so that (the rare, if at all) abnormal termination of OSD (without lockfile being removed) is dealt with doesn't affect behaviour for long, but certainly larger than duration of display of a notification in notify-osd.
+
+appdir = '%s/.brightnessctrl' % os.getenv('HOME')
+pipefile = 'OSDpipe'
+lockfile = 'OSDlock'
+
+pipefilepath = '%s/%s' % (appdir, pipefile)
+lockfilepath = '%s/%s' % (appdir, lockfile)
+
+try:
+	f = open(lockfilepath, 'r') #Will shift to "except" if lockfile is absent.
+	f.close()
+	currentTime = time.time()
+	lastModified = os.path.getmtime(lockfilepath)
+	if currentTime - lastModified > TIMEOUT: #lockfile shouldn't be around.
+		os.remove(lockfilepath)
+		raise Exception('No other brightnessctrlOSDs running!')
+	print >> sys.stderr, 'Another instance of brightnessctrlOSD found. This instance is closing.'
+except:
+	try:
+		f = open(lockfilepath, 'w')
+		f.close()
+
+		class AlarmHasRungError(Exception):
+			pass
+
+		class PynotifyInitialiseError(Exception):
+			pass
+
+		def throwError(signum, frame):
+			raise AlarmHasRungError
+
+		signal.signal(signal.SIGALRM, throwError)
+
+		if not(pynotify.init('Brightness-Control-OSD')):
+			raise PynotifyInitialiseError
+
+		osd = pynotify.Notification('Screen Brightness')
+		osd.set_urgency(pynotify.URGENCY_CRITICAL)
+
+		while True:
+			signal.alarm(TIMEOUT)
+			f = open(pipefilepath, 'r')
+			B = f.readlines()
+			f.close()
+			try:
+				B = int(B[-1])
+			except:
+				continue
+			NOD = int(round((B*100.0)/255))
+
+			Bstr = '  '*(3-len(str(B))) + str(B)
+			NODstr = '  '*(3-len(str(NOD))) + str(NOD)
+			osd.update('☀Screen Brightness: %s/255%s%s %s' % (Bstr, 19*' ', NODstr, '%'), '◁%s%s▶' % (NOD*'·', ((100-NOD) if NOD!=0 else 75)*' ')) #FIXME: Clueless about the 75. But, is needed.
+			osd.show()
+			os.utime(lockfilepath, None)
+	except AlarmHasRungError:
+		os.remove(lockfilepath)
+		print 'Idle TIMEOUT exceeded. brightnessctrlOSD is closing.'
+	except PynotifyInitialiseError:
+		os.remove(lockfilepath)
+		print >> sys.stderr, 'Error initialising pynotify. brightnessctrlOSD is closing.'
+	except KeyboardInterrupt:
+		os.remove(lockfilepath)
+		print >> sys.stderr, 'Keyboard Interrupt detected. brightnessctrlOSD is closing.'
+	except:
+		os.remove(lockfilepath)
+		print >> sys.stderr, 'Unexpected error. brightnessctrlOSD is closing.'
+

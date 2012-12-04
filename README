@@ -1,0 +1,42 @@
+brightnessctrl
+==============
+
+Introduction:
+1. Brightness control with 256 levels of brightness and OSD notification for unity.
+2. You have to make the command setpci sudoable without password. See how - http://askubuntu.com/questions/159007/specific-sudo-commands-without-password
+3. Works with intel PSB driver but can be edited to work with others.
+4. The OSD notification is handled by a separate script and is designed to look good in Unity's notifyOSD.
+
+Output of brightnessctrl -h:
+#Begin output##################
+Usage: 
+    brightnessctrl [-h/--help] [-o/--osd] brightness-option
+
+Notes:
+   1. Brightness is an integer between 0 and 255 (inclusive).
+   2. Do not use more than one brightness option at once.
+   3. Be careful not to set brightness to 0 - not that this is fatal.
+
+Options:
+  -h, --help       show this help message and exit  
+  -o, --osd        Display OSD Notification  
+  -g, --get        Print current brightness  
+  -s S, --set=S    Set brightness to S  
+  -p P, --plus=P   Increase brightness by P  
+  -m M, --minus=M  Reduce brightness by M
+#End output####################
+
+How it works:
+
+1. It uses the setpci command to set brightness and this should with all drivers.
+2. Because setpci needs sudo access, you have to make it sudoable without password prompt.
+3. To get the current brightness (-g) and to use that to increase and decrease brightness (-p/-m) it looks into the file /sys/class/backlight/psb_intel_backlight/actual_brightness.
+4. The maximum brightness (255) corresponds to 398310 in that file and the minimum (0) to 0 (linear scaling). Intermediate levels of brightness (say between 0 and 398310/255) don't work.
+
+How to modify this script for other drivers:
+
+1. Look into the directory /sys/class/backlight/ and find the appropriate actual_brightness file.
+2. Set brightness to maximum (by other methods) and see the contents of this file with cat actual_brightness.
+3. Change the values of actual_brightness_file and maximum_brightness_in_file in brightnessctrl.
+4. /sys/class/backlight/acpi_video0/ has only about 10 levels of brightness, so this work with that.
+5. It may be the case that there is no driver which shows more than 256 levels of brightness.
